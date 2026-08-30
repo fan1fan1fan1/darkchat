@@ -1,0 +1,40 @@
+name: dark_secret_chat
+description: 暗黑神秘风真人聊天室（WebSocket 服务端 + Flutter 客户端）
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.1.1
+  web_socket_channel: ^2.4.5
+  shared_preferences: ^2.2.3
+  image_picker: ^1.0.7
+  lpinyin: ^2.0.3
+  path_provider: ^2.1.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.14.1
+
+# APP 图标生成：把原图放到 assets/icon/icon.jpg 后运行
+#   flutter pub get && dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: 'assets/icon/icon.jpg'
+  android: true
+  adaptive_icon_background: '#06060A'
+  adaptive_icon_foreground: 'assets/icon/icon.jpg'
+  windows:
+    generate: true
+    image_path: 'assets/icon/icon.jpg'
+    icon_size: 256
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/chat_bg.jpg
