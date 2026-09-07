@@ -13,19 +13,12 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final _server = TextEditingController();
   final _account = TextEditingController();
   final _invite = TextEditingController();
   final _pwd = TextEditingController();
   final _pwd2 = TextEditingController();
   bool _busy = false;
   bool _hidePwd = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _server.text = context.read<AppState>().serverUrl;
-  }
 
   Future<void> _register() async {
     if (_busy) return;
@@ -39,7 +32,6 @@ class _RegisterPageState extends State<RegisterPage> {
     setState(() => _busy = true);
     try {
       final s = context.read<AppState>();
-      await s.saveServerUrl(_server.text.trim());
       await s.registerAndLogin(
         account: account,
         password: _pwd.text,
@@ -66,15 +58,6 @@ class _RegisterPageState extends State<RegisterPage> {
                 style:
                     TextStyle(color: kTextSub, fontSize: 13, letterSpacing: 4)),
             const SizedBox(height: 24),
-            TextField(
-              controller: _server,
-              style: const TextStyle(color: kTextMain, fontSize: 13),
-              decoration: const InputDecoration(
-                hintText: '服务器地址  ws://192.168.x.x:8080（电脑运行 server 后控制台会打印）',
-                prefixIcon: Icon(Icons.dns_outlined, color: kTextSub, size: 20),
-              ),
-            ),
-            const SizedBox(height: 14),
             TextField(
               controller: _account,
               keyboardType: TextInputType.visiblePassword,

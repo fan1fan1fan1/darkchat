@@ -36,40 +36,42 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
-          _section('隐私'),
-          DarkCard(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              children: [
-                _switchTile(
-                  '允许通过账号搜索到我',
-                  '关闭后其他人无法搜索添加你，你仍可主动加人',
-                  s.me?.settings.searchable ?? true,
-                  (v) async {
-                    try {
-                      await s.updateSettings(searchable: v);
-                    } catch (e) {
-                      if (context.mounted) {
-                        toast(context, friendlyError(e), error: true);
+          if (!s.isGuest) ...[
+            _section('隐私'),
+            DarkCard(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  _switchTile(
+                    '允许通过账号搜索到我',
+                    '关闭后其他人无法搜索添加你，你仍可主动加人',
+                    s.me?.settings.searchable ?? true,
+                    (v) async {
+                      try {
+                        await s.updateSettings(searchable: v);
+                      } catch (e) {
+                        if (context.mounted) {
+                          toast(context, friendlyError(e), error: true);
+                        }
                       }
-                    }
-                  },
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('黑名单', style: const TextStyle(fontSize: 14)),
-                  subtitle: Text(
-                      s.blocked.isEmpty ? '暂无黑名单用户' : '${s.blocked.length} 人',
-                      style: TextStyle(color: kTextSub, fontSize: 11)),
-                  trailing:
-                      Icon(Icons.chevron_right, color: kTextSub, size: 20),
-                  onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const BlockedPage())),
-                ),
-              ],
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('黑名单', style: const TextStyle(fontSize: 14)),
+                    subtitle: Text(
+                        s.blocked.isEmpty ? '暂无黑名单用户' : '${s.blocked.length} 人',
+                        style: TextStyle(color: kTextSub, fontSize: 11)),
+                    trailing:
+                        Icon(Icons.chevron_right, color: kTextSub, size: 20),
+                    onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const BlockedPage())),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
           _section('通用'),
           DarkCard(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -78,7 +80,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text('清空本地聊天记录', style: const TextStyle(fontSize: 14)),
-                  subtitle: Text('不影响服务器保存的记录',
+                  subtitle: Text(s.isGuest ? '清除本机保存的对话记录' : '不影响服务器保存的记录',
                       style: TextStyle(color: kTextSub, fontSize: 11)),
                   trailing:
                       Icon(Icons.chevron_right, color: kTextSub, size: 20),

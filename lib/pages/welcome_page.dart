@@ -13,7 +13,6 @@ class WelcomePage extends StatefulWidget {
 }
 
 class _WelcomePageState extends State<WelcomePage> {
-  final _server = TextEditingController();
   final _account = TextEditingController();
   final _password = TextEditingController();
   bool _busy = false;
@@ -23,7 +22,6 @@ class _WelcomePageState extends State<WelcomePage> {
   void initState() {
     super.initState();
     final s = context.read<AppState>();
-    _server.text = s.serverUrl;
     _account.text = s.savedAccount ?? '';
     _password.text = s.savedPassword ?? '';
   }
@@ -33,7 +31,6 @@ class _WelcomePageState extends State<WelcomePage> {
     setState(() => _busy = true);
     final s = context.read<AppState>();
     try {
-      await s.saveServerUrl(_server.text.trim());
       await s.connectAndLogin(_account.text.trim(), _password.text, save: true);
       // RootPage 会自动切换到主页
     } catch (e) {
@@ -42,6 +39,11 @@ class _WelcomePageState extends State<WelcomePage> {
       _busy = false;
       if (mounted) setState(() {});
     }
+  }
+
+  void _enterGuest() {
+    context.read<AppState>().enterGuest();
+    // RootPage 会自动切换到主页
   }
 
   @override
@@ -85,9 +87,6 @@ class _WelcomePageState extends State<WelcomePage> {
                     style: TextStyle(
                         fontSize: 13, letterSpacing: 6, color: kTextSub)),
                 const SizedBox(height: 40),
-                _field(_server, '服务器地址  ws://192.168.x.x:8080',
-                    icon: Icons.dns_outlined),
-                const SizedBox(height: 14),
                 _field(_account, '账号', icon: Icons.person_outline),
                 const SizedBox(height: 14),
                 _field(_password, '密码',
@@ -111,7 +110,7 @@ class _WelcomePageState extends State<WelcomePage> {
                               : Icons.circle,
                       size: 8,
                       color: conn == ConnState.connected
-                          ? Color(0xFF34D399)
+                          ? const Color(0xFF34D399)
                           : kTextSub,
                     ),
                     const SizedBox(width: 6),
@@ -120,7 +119,7 @@ class _WelcomePageState extends State<WelcomePage> {
                           ? '已连接服务器'
                           : conn == ConnState.connecting
                               ? '连接中…'
-                              : '未连接 · 电脑运行 server 后填入其局域网地址',
+                              : '登录后可聊天、加好友、发布月痕',
                       style: const TextStyle(fontSize: 12, color: kTextSub),
                     ),
                   ],
@@ -135,6 +134,7 @@ class _WelcomePageState extends State<WelcomePage> {
                           child: CircularProgressIndicator(strokeWidth: 2))
                       : const Text('进  入'),
                 ),
+                const SizedBox(height: 6),
                 TextButton(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const RegisterPage()),
@@ -142,8 +142,14 @@ class _WelcomePageState extends State<WelcomePage> {
                   child: const Text('首次使用？注册新账号 →',
                       style: TextStyle(letterSpacing: 2)),
                 ),
-                const SizedBox(height: 8),
-                Text('与电脑处于同一 WiFi · 电脑运行 dart run server/server.dart',
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: _enterGuest,
+                  child: const Text('先随便看看 · 游客模式进入',
+                      style: TextStyle(letterSpacing: 2)),
+                ),
+                const SizedBox(height: 10),
+                Text('游客模式无需联网：可浏览界面、记录月痕、与自己对话\n聊天、加好友等社交功能需登录后使用',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 11, color: kTextSub.withOpacity(0.7))),

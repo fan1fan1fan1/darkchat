@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../theme.dart';
 import 'add_friend_page.dart';
-import 'blocked_page.dart';
 import 'chat_page.dart';
 import 'create_group_page.dart';
 import 'friend_profile_page.dart';
@@ -42,10 +41,23 @@ class _HomePageState extends State<HomePage> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 14),
-            child: context.select<AppState, ConnState>((s) => s.conn) ==
-                    ConnState.connected
-                ? const Icon(Icons.circle, size: 9, color: Color(0xFF34D399))
-                : const Icon(Icons.wifi_off, size: 16, color: kTextSub),
+            child: context.select<AppState, bool>((s) => s.isGuest)
+                ? Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: kAccent.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: kAccentDim.withOpacity(0.6)),
+                    ),
+                    child: const Text('游客模式',
+                        style: TextStyle(fontSize: 10, color: kAccent)),
+                  )
+                : context.select<AppState, ConnState>((s) => s.conn) ==
+                        ConnState.connected
+                    ? const Icon(Icons.circle,
+                        size: 9, color: Color(0xFF34D399))
+                    : const Icon(Icons.wifi_off, size: 16, color: kTextSub),
           ),
         ],
       ),
@@ -117,6 +129,19 @@ class ChatsTab extends StatelessWidget {
         groupId: g.id,
       ));
     }
+    // 游客模式：唯一会话 = 跟自己对话
+    if (s.isGuest) {
+      items.insert(
+        0,
+        (
+          conv: convKeyForUser(s.me!.id, s.me!.id),
+          title: '跟自己对话',
+          isGroup: false,
+          otherId: s.me!.id,
+          groupId: '',
+        ),
+      );
+    }
     final list = items
       ..sort((a, b) {
         final ta = s.msgsOf(a.conv).isEmpty ? 0 : s.msgsOf(a.conv).last.ts;
@@ -170,7 +195,9 @@ class ChatsTab extends StatelessWidget {
                       child: const Icon(Icons.group_outlined,
                           color: kAccent, size: 22),
                     )
-                  : MAvatar(e.title),
+                  : MAvatar(
+                      e.otherId == s.me?.id ? (s.me?.name ?? '我') : e.title,
+                      uid: e.otherId == s.me?.id ? s.me?.id : null),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -244,6 +271,10 @@ class ChatsTab extends StatelessWidget {
         Navigator.of(context)
             .push(MaterialPageRoute(builder: (_) => ChatPage.forGroup(g)));
       }
+    } else if (e.otherId == s.me?.id) {
+      // 跟自己对话（游客模式 / 自己）
+      Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => ChatPage.forUserId(s.me!.id, e.title)));
     } else {
       final f = s.friends[e.otherId];
       if (f != null) {
@@ -282,16 +313,41 @@ class ContactsTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       children: [
-        _actionTile(context, Icons.person_add_alt_1_outlined, '添加好友',
-            onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AddFriendPage()))),
-        _actionTile(context, Icons.group_add_outlined, '创建群聊',
-            onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const CreateGroupPage()))),
-        _actionTile(context, Icons.notifications_outlined, '新的朋友',
-            badge: s.requests.length,
-            onTap: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const RequestsPage()))),
+        if (s.isGuest)
+          DarkCard(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Row(
+              children: [
+                const Icon(Icons.lock_outline, color: kAccent, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('游客模式',
+                          style: TextStyle(color: kTextMain, fontSize: 14)),
+                      const SizedBox(height: 2),
+                      Text('添加好友、群聊等社交功能，登录或注册后即可使用',
+                          style: TextStyle(
+                              color: kTextSub, fontSize: 11, height: 1.4)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          _actionTile(context, Icons.person_add_alt_1_outlined, '添加好友',
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AddFriendPage()))),
+          _actionTile(context, Icons.group_add_outlined, '创建群聊',
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const CreateGroupPage()))),
+          _actionTile(context, Icons.notifications_outlined, '新的朋友',
+              badge: s.requests.length,
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const RequestsPage()))),
+        ],
         const Padding(
           padding: EdgeInsets.fromLTRB(6, 18, 0, 8),
           child: Text('好友',
@@ -301,7 +357,7 @@ class ContactsTab extends StatelessWidget {
         if (friends.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 30),
-            child: Text('还没有好友 · 通过对方的账号添加',
+            child: Text(s.isGuest ? '游客模式下没有好友 · 登录后解锁社交' : '还没有好友 · 通过对方的账号添加',
                 textAlign: TextAlign.center,
                 style:
                     TextStyle(color: kTextSub.withOpacity(0.7), fontSize: 12)),
@@ -366,7 +422,7 @@ class ContactsTab extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: kTextMain, fontSize: 15)),
                 ),
-                Text('我自己 · ID ${s.me!.id}',
+                Text(s.isGuest ? '游客 · 本地资料' : '我自己 · ID ${s.me!.id}',
                     style: TextStyle(
                         color: kTextSub.withOpacity(0.6), fontSize: 11)),
               ],
@@ -412,6 +468,29 @@ class MeTab extends StatelessWidget {
 
   Future<void> _confirmLogout(BuildContext context) async {
     final s = context.read<AppState>();
+    if (s.isGuest) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('退出游客模式'),
+          content: const Text(
+              '游客数据仅保存在本机，下次以游客进入仍会保留。\n退出后可登录或注册账号，解锁聊天、加好友等社交功能。',
+              style: TextStyle(fontSize: 13)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('再逛逛'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('退出游客模式'),
+            ),
+          ],
+        ),
+      );
+      if (ok == true) await s.logout();
+      return;
+    }
     final choice = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -480,7 +559,7 @@ class MeTab extends StatelessWidget {
                               fontSize: 19,
                               fontWeight: FontWeight.w700)),
                       const SizedBox(height: 5),
-                      Text('账号 ${me.id}',
+                      Text(s.isGuest ? '游客模式 · 资料仅保存在本机' : '账号 ${me.id}',
                           style: TextStyle(color: kTextSub, fontSize: 12)),
                       if (tags.isNotEmpty) ...[
                         const SizedBox(height: 6),
@@ -515,8 +594,12 @@ class MeTab extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           child: Column(
             children: [
-              _entry(Icons.person_outline, '个人中心', '名称 · 性别 · 星座 · MBTI · 密码',
-                  () async {
+              _entry(
+                  Icons.person_outline,
+                  '个人中心',
+                  s.isGuest
+                      ? '名称 · 签名 · 头像 · 性别 · 星座'
+                      : '名称 · 性别 · 星座 · MBTI · 密码', () async {
                 await Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const ProfileEditPage()));
               }),
@@ -536,8 +619,8 @@ class MeTab extends StatelessWidget {
         const SizedBox(height: 24),
         OutlinedButton.icon(
           onPressed: () => _confirmLogout(context),
-          icon: const Icon(Icons.logout, size: 18),
-          label: const Text('退出登录'),
+          icon: Icon(s.isGuest ? Icons.login : Icons.logout, size: 18),
+          label: Text(s.isGuest ? '退出游客模式 / 去登录' : '退出登录'),
           style: OutlinedButton.styleFrom(
             foregroundColor: kDanger,
             side: BorderSide(color: kDanger.withOpacity(0.4)),

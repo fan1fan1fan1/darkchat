@@ -174,9 +174,10 @@ class _ChatPageState extends State<ChatPage> {
     final msgs = s.msgsOf(conv);
     final isGroup = widget.toGroup != null;
     final peerId = widget.toUser;
-    // 私聊标题 = 备注名 > 原名
+    // 私聊标题 = 备注名 > 原名（跟自己的对话固定标题）
     String title = widget.title;
-    if (peerId != null) title = s.displayName(peerId);
+    final isSelfChat = peerId != null && peerId == s.me?.id;
+    if (peerId != null && !isSelfChat) title = s.displayName(peerId);
     final isBlocked = peerId != null && s.blocked.any((b) => b.id == peerId);
 
     return Scaffold(
@@ -195,7 +196,13 @@ class _ChatPageState extends State<ChatPage> {
                 ],
               ],
             ),
-            if (widget.subtitle != null)
+            if (isSelfChat)
+              Text(s.isGuest ? '自言自语 · 仅保存在本机' : '文件传输助手',
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: kTextSub.withOpacity(0.8),
+                      letterSpacing: 2))
+            else if (widget.subtitle != null)
               Text(widget.subtitle!,
                   style: TextStyle(
                       fontSize: 10,
@@ -300,7 +307,7 @@ class _ChatPageState extends State<ChatPage> {
             Expanded(
               child: msgs.isEmpty
                   ? Center(
-                      child: Text('从这里开始你们的对话',
+                      child: Text(isSelfChat ? '在这里和自己说说话' : '从这里开始你们的对话',
                           style: TextStyle(
                               color: kTextSub.withOpacity(0.6),
                               fontSize: 12,

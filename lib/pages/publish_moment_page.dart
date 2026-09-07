@@ -70,6 +70,7 @@ class _PublishMomentPageState extends State<PublishMomentPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isGuest = context.watch<AppState>().isGuest;
     return Scaffold(
       appBar: AppBar(
         title: const Text('留 痕'),
@@ -159,7 +160,7 @@ class _PublishMomentPageState extends State<PublishMomentPage> {
             ],
           ),
           const SizedBox(height: 18),
-          Text('谁可以看 · 你的好友',
+          Text(isGuest ? '游客模式 · 痕迹只保存在本机，登录后可分享给好友' : '谁可以看 · 你的好友',
               style: TextStyle(color: kTextSub.withOpacity(0.7), fontSize: 11)),
         ],
       ),

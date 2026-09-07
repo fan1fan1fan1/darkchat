@@ -223,7 +223,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                   style: TextStyle(color: kTextSub, fontSize: 11))),
           const SizedBox(height: 8),
           Center(
-            child: Text('账号 ${me.id}',
+            child: Text(s.isGuest ? '游客 · 资料仅保存在本机' : '账号 ${me.id}',
                 style: TextStyle(color: kTextSub, fontSize: 12)),
           ),
           const SizedBox(height: 20),
@@ -367,30 +367,32 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('保 存 资 料'),
           ),
-          const SizedBox(height: 28),
-          _label('修改密码'),
-          DarkCard(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Column(
-              children: [
-                _pwdField(_oldPwd, '原密码'),
-                const Divider(height: 1),
-                _pwdField(_newPwd, '新密码（至少 6 位）'),
-                const Divider(height: 1),
-                _pwdField(_newPwd2, '确认新密码'),
-              ],
+          if (!s.isGuest) ...[
+            const SizedBox(height: 28),
+            _label('修改密码'),
+            DarkCard(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Column(
+                children: [
+                  _pwdField(_oldPwd, '原密码'),
+                  const Divider(height: 1),
+                  _pwdField(_newPwd, '新密码（至少 6 位）'),
+                  const Divider(height: 1),
+                  _pwdField(_newPwd2, '确认新密码'),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
-          OutlinedButton(
-            onPressed: _pwdBusy ? null : _changePwd,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: kAccent,
-              side: const BorderSide(color: kAccentDim),
-              minimumSize: const Size.fromHeight(46),
+            const SizedBox(height: 14),
+            OutlinedButton(
+              onPressed: _pwdBusy ? null : _changePwd,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: kAccent,
+                side: const BorderSide(color: kAccentDim),
+                minimumSize: const Size.fromHeight(46),
+              ),
+              child: const Text('确认修改密码'),
             ),
-            child: const Text('确认修改密码'),
-          ),
+          ],
           const SizedBox(height: 30),
         ],
       ),

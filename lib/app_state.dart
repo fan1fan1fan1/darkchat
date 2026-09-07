@@ -11,6 +11,13 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 /// 全局 ScaffoldMessenger，用于应用内消息横幅
 final appMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
+/// 官方服务器地址（固定，用户不可修改）
+const String kServerUrl =
+    'wss://reflected-calgary-infections-occurrence.trycloudflare.com';
+
+/// 游客模式的本地用户 ID
+const String kGuestId = 'guest';
+
 // ---------- 数据模型 ----------
 
 /// 把任意 Map 安全转成 Map<String, dynamic>
@@ -153,6 +160,18 @@ class Moment {
             .map((e) => Map<String, dynamic>.from(e))
             .toList(),
       );
+
+  /// 本地持久化用（游客模式）
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'from': from,
+        'name': name,
+        'text': text,
+        'images': images,
+        'ts': ts,
+        'likes': likes,
+        'comments': comments,
+      };
 }
 
 class GroupInfo {
@@ -211,6 +230,18 @@ class Msg {
   /// 会话 key：私聊 u_<minId>-<maxId>，群聊 g_<id>（与服务端一致）
   String get conv =>
       group != null ? 'g_$group' : 'u_${_pairKey(from, to ?? '')}';
+
+  /// 本地持久化用（游客模式）
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'from': from,
+        'fromName': fromName,
+        'type': type,
+        'content': content,
+        'ts': ts,
+        if (to != null) 'to': to,
+        if (group != null) 'group': group,
+      };
 }
 
 String _pairKey(String a, String b) =>
@@ -226,17 +257,14 @@ enum ConnState { disconnected, connecting, connected }
 String friendlyError(Object e) {
   final s = e.toString();
   if (e is TimeoutException || s.contains('TimeoutException')) {
-    return '连接服务器超时，请依次检查：\n'
-        '① 电脑已运行 dart run server/server.dart\n'
-        '② 地址和服务器控制台打印的完全一致（含 ws:// 和 :8080）\n'
-        '③ 手机和电脑连的是同一个 WiFi（手机别用流量）\n'
-        '④ Windows 防火墙是否放行了 8080 端口';
+    return '连接服务器超时，请检查手机网络后重试';
   }
   if (s.contains('Connection refused') ||
       s.contains('SocketException') ||
       s.contains('Network is unreachable') ||
-      s.contains('Connection timed out')) {
-    return '无法连接服务器：请确认电脑已启动服务器、地址正确、手机与电脑在同一 WiFi';
+      s.contains('Connection timed out') ||
+      s.contains('WebSocket')) {
+    return '无法连接服务器，请检查网络后重试';
   }
   return s.replaceFirst('Exception: ', '');
 }
@@ -248,8 +276,13 @@ class AppState extends ChangeNotifier {
   int _reqId = 0;
 
   ConnState conn = ConnState.disconnected;
-  String serverUrl = 'ws://192.168.1.100:8080'; // 手机
-  //String serverUrl = 'ws://127.0.0.1:8080'; // 电脑
+
+  /// 服务器地址固定为官方云端地址
+  String serverUrl = kServerUrl;
+
+  /// 是否为游客模式（离线本地模式，不连接服务器）
+  bool isGuest = false;
+
   Me? me;
   final friends = <String, UserProfile>{};
   final groups = <String, GroupInfo>{};
@@ -272,8 +305,9 @@ class AppState extends ChangeNotifier {
   /// 月痕动态缓存
   final List<Moment> moments = [];
 
-  /// 好友显示名：备注优先
+  /// 好友显示名：自己 > 备注 > 好友名 > id
   String displayName(String fid) {
+    if (me != null && fid == me!.id) return me!.name;
     final r = friendMeta[fid]?.remark ?? '';
     if (r.isNotEmpty) return r;
     return friends[fid]?.name ?? fid;
@@ -287,7 +321,6 @@ class AppState extends ChangeNotifier {
 
   Future<void> init() async {
     final sp = await SharedPreferences.getInstance();
-    serverUrl = sp.getString('server') ?? serverUrl;
     savedAccount = sp.getString('account');
     savedPassword = sp.getString('password');
     notifyEnabled = sp.getBool('notify') ?? true;
@@ -317,6 +350,7 @@ class AppState extends ChangeNotifier {
 
   Future<bool> connectAndLogin(String account, String password,
       {bool save = false}) async {
+    isGuest = false;
     conn = ConnState.connecting;
     notifyListeners();
     final uri = Uri.tryParse(serverUrl);
@@ -395,7 +429,7 @@ class AppState extends ChangeNotifier {
       // 未连接时先建立连接
       final uri = Uri.tryParse(serverUrl);
       if (uri == null || !uri.hasScheme) {
-        throw Exception('服务器地址无效：$serverUrl\n示例 ws://192.168.x.x:8080');
+        throw Exception('服务器地址无效，请稍后重试');
       }
       final channel = WebSocketChannel.connect(uri);
       try {
@@ -403,9 +437,7 @@ class AppState extends ChangeNotifier {
       } catch (_) {
         conn = ConnState.disconnected;
         notifyListeners();
-        throw Exception('无法连接 $serverUrl（8 秒无响应）\n'
-            '请核对第一栏地址与电脑控制台打印的完全一致，'
-            '且手机与电脑连同一个 WiFi');
+        throw Exception('无法连接服务器（8 秒无响应）\n请检查手机网络后重试');
       }
       _channel = channel;
       channel.stream
@@ -438,9 +470,147 @@ class AppState extends ChangeNotifier {
     await connectAndLogin(accountId, password, save: true);
   }
 
+  // ---------- 游客模式（离线本地，不连接服务器） ----------
+
+  /// 进入游客模式：生成本地身份，数据只存本机
+  Future<void> enterGuest() async {
+    isGuest = true;
+    conn = ConnState.disconnected;
+    me = Me(
+      id: kGuestId,
+      name: '游客',
+      profile: Profile(),
+      settings: Settings(),
+    );
+    friends.clear();
+    groups.clear();
+    requests.clear();
+    history.clear();
+    unread.clear();
+    blocked.clear();
+    friendMeta.clear();
+    moments.clear();
+    await _guestLoad();
+    notifyListeners();
+  }
+
+  /// 退出游客模式（去登录/注册）
+  Future<void> exitGuest() async {
+    isGuest = false;
+    me = null;
+    friends.clear();
+    groups.clear();
+    requests.clear();
+    history.clear();
+    unread.clear();
+    blocked.clear();
+    friendMeta.clear();
+    moments.clear();
+    notifyListeners();
+  }
+
+  Future<SharedPreferences> get _sp => SharedPreferences.getInstance();
+
+  /// 游客数据持久化
+  Future<void> _guestSave() async {
+    if (!isGuest || me == null) return;
+    final sp = await _sp;
+    await sp.setString(
+        'guest_me',
+        jsonEncode({
+          'id': me!.id,
+          'name': me!.name,
+          'profile': me!.profile.toJson(),
+        }));
+    await sp.setString(
+        'guest_moments', jsonEncode(moments.map((m) => m.toJson()).toList()));
+    await sp.setString(
+        'guest_history',
+        jsonEncode(history
+            .map((k, v) => MapEntry(k, v.map((m) => m.toJson()).toList()))));
+  }
+
+  Future<void> _guestLoad() async {
+    final sp = await _sp;
+    final meRaw = sp.getString('guest_me');
+    if (meRaw != null && me != null) {
+      try {
+        final j = jsonDecode(meRaw) as Map<String, dynamic>;
+        me = Me(
+          id: kGuestId,
+          name: (j['name'] ?? '游客').toString(),
+          profile: Profile.fromJson(asStrMap(j['profile'])),
+          settings: Settings(),
+        );
+      } catch (_) {}
+    }
+    try {
+      moments
+        ..clear()
+        ..addAll(((jsonDecode(sp.getString('guest_moments') ?? '[]') as List)
+            .map((e) => Moment.fromJson(Map<String, dynamic>.from(e)))));
+    } catch (_) {}
+    try {
+      final h = jsonDecode(sp.getString('guest_history') ?? '{}') as Map;
+      history.clear();
+      h.forEach((key, value) {
+        final list = history.putIfAbsent(key.toString(), () => <Msg>[]);
+        for (final m in (value as List)) {
+          list.add(Msg.fromJson(Map<String, dynamic>.from(m)));
+        }
+      });
+    } catch (_) {}
+  }
+
+  /// 游客模式：修改本地资料（名称、签名、头像等）
+  Future<void> guestUpdateProfile(
+      {required String name, required Profile profile}) async {
+    if (me == null) return;
+    me = Me(id: me!.id, name: name, profile: profile, settings: me!.settings);
+    // 同步更新本地月痕/消息里显示的名字
+    for (var i = 0; i < moments.length; i++) {
+      final m = moments[i];
+      moments[i] = Moment(
+        id: m.id,
+        from: m.from,
+        name: name,
+        text: m.text,
+        images: m.images,
+        ts: m.ts,
+        likes: m.likes,
+        comments: m.comments.map((c) {
+          if (c['from'] == kGuestId) {
+            return {...c, 'name': name};
+          }
+          return c;
+        }).toList(),
+      );
+    }
+    // 自言自语消息里的名字也同步
+    final selfConv = convKeyForUser(kGuestId, kGuestId);
+    final selfMsgs = history[selfConv];
+    if (selfMsgs != null) {
+      history[selfConv] = selfMsgs
+          .map((m) => Msg(
+                id: m.id,
+                from: m.from,
+                fromName: name,
+                to: m.to,
+                group: m.group,
+                type: m.type,
+                content: m.content,
+                ts: m.ts,
+              ))
+          .toList();
+    }
+    await _guestSave();
+    notifyListeners();
+  }
+
   // ---------- 资料 / 密码 / 设置 / 拍一拍 ----------
   Future<void> updateProfile(
       {required String name, required Profile profile}) async {
+    if (isGuest) return guestUpdateProfile(name: name, profile: profile);
     final res = await request(
         'update_profile', {'name': name, 'profile': profile.toJson()});
     me = Me.fromJson(Map<String, dynamic>.from(res['me']));
@@ -461,6 +631,10 @@ class AppState extends ChangeNotifier {
     if (me == null) return;
     if (searchable != null) me!.settings.searchable = searchable;
     notifyListeners();
+    if (isGuest) {
+      await _guestSave();
+      return;
+    }
     final res = await request('update_settings', {
       'settings': {'searchable': me!.settings.searchable}
     });
@@ -515,6 +689,11 @@ class AppState extends ChangeNotifier {
 
   // ---------- 月痕 ----------
   Future<void> loadMoments() async {
+    if (isGuest) {
+      await _guestLoad();
+      notifyListeners();
+      return;
+    }
     final res = await request('moments_feed', {});
     moments
       ..clear()
@@ -525,6 +704,24 @@ class AppState extends ChangeNotifier {
 
   Future<void> postMoment(
       {required String text, required List<String> imagesB64}) async {
+    if (isGuest) {
+      moments.insert(
+        0,
+        Moment(
+          id: 'local_${DateTime.now().millisecondsSinceEpoch}',
+          from: kGuestId,
+          name: me?.name ?? '游客',
+          text: text,
+          images: imagesB64,
+          ts: DateTime.now().millisecondsSinceEpoch,
+          likes: const [],
+          comments: const [],
+        ),
+      );
+      await _guestSave();
+      notifyListeners();
+      return;
+    }
     final res =
         await request('post_moment', {'text': text, 'images': imagesB64});
     moments.insert(
@@ -533,12 +730,43 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> deleteMoment(String id) async {
+    if (isGuest) {
+      moments.removeWhere((m) => m.id == id);
+      await _guestSave();
+      notifyListeners();
+      return;
+    }
     await request('delete_moment', {'id': id});
     moments.removeWhere((m) => m.id == id);
     notifyListeners();
   }
 
+  /// 给自己的月痕点月 / 取消点月（游客只能给自己点）
   Future<void> likeMoment(String id) async {
+    if (isGuest) {
+      final idx = moments.indexWhere((m) => m.id == id);
+      if (idx < 0) return;
+      final old = moments[idx];
+      final likes = List<String>.from(old.likes);
+      if (likes.contains(kGuestId)) {
+        likes.remove(kGuestId);
+      } else {
+        likes.add(kGuestId);
+      }
+      moments[idx] = Moment(
+        id: old.id,
+        from: old.from,
+        name: old.name,
+        text: old.text,
+        images: old.images,
+        ts: old.ts,
+        likes: likes,
+        comments: old.comments,
+      );
+      await _guestSave();
+      notifyListeners();
+      return;
+    }
     final res = await request('like_moment', {'id': id});
     final likes =
         ((res['likes'] as List?) ?? []).map((e) => e.toString()).toList();
@@ -552,24 +780,43 @@ class AppState extends ChangeNotifier {
           text: old.text,
           images: old.images,
           ts: old.ts,
-          likes: likes);
+          likes: likes,
+          comments: old.comments);
       notifyListeners();
     }
   }
 
-  /// 评论月痕
+  /// 评论月痕（游客只能给自己的月痕评论，即自言自语）
   Future<void> commentMoment(String id, {required String text}) async {
+    if (isGuest) {
+      final idx = moments.indexWhere((m) => m.id == id);
+      if (idx < 0) return;
+      final old = moments[idx];
+      final comments = List<Map<String, dynamic>>.from(old.comments);
+      comments.add({
+        'from': kGuestId,
+        'name': me?.name ?? '游客',
+        'text': text,
+        'ts': DateTime.now().millisecondsSinceEpoch,
+      });
+      moments[idx] = Moment(
+        id: old.id,
+        from: old.from,
+        name: old.name,
+        text: old.text,
+        images: old.images,
+        ts: old.ts,
+        likes: old.likes,
+        comments: comments,
+      );
+      await _guestSave();
+      notifyListeners();
+      return;
+    }
     final res = await request('comment_moment', {'id': id, 'text': text});
     final updated = Moment.fromJson(Map<String, dynamic>.from(res['moment']));
     final idx = moments.indexWhere((m) => m.id == id);
     if (idx >= 0) moments[idx] = updated;
-    notifyListeners();
-  }
-
-  Future<void> saveServerUrl(String url) async {
-    serverUrl = url.trim();
-    final sp = await SharedPreferences.getInstance();
-    await sp.setString('server', serverUrl);
     notifyListeners();
   }
 
@@ -608,6 +855,11 @@ class AppState extends ChangeNotifier {
   Future<void> sendText(
       {String? toUser, String? toGroup, required String text}) async {
     if (text.trim().isEmpty) return;
+    if (isGuest) {
+      // 游客：只能跟自己对话（本地记录）
+      _guestAppendMsg(type: 'text', content: text.trim());
+      return;
+    }
     await request('send_msg', {
       'toUser': toUser,
       'toGroup': toGroup,
@@ -628,12 +880,34 @@ class AppState extends ChangeNotifier {
     if (b64.length > 3 * 1024 * 1024) {
       throw Exception('图片过大，请换一张小图（<3MB）');
     }
+    if (isGuest) {
+      _guestAppendMsg(type: 'image', content: b64);
+      return;
+    }
     await request('send_msg', {
       'toUser': toUser,
       'toGroup': toGroup,
       'type': 'image',
       'content': b64,
     });
+  }
+
+  /// 游客模式：往「跟自己的对话」里追加一条本地消息
+  void _guestAppendMsg({required String type, required String content}) {
+    if (me == null) return;
+    final conv = convKeyForUser(kGuestId, kGuestId);
+    final list = history.putIfAbsent(conv, () => <Msg>[]);
+    list.add(Msg(
+      id: 'local_${DateTime.now().millisecondsSinceEpoch}_${list.length}',
+      from: kGuestId,
+      fromName: me!.name,
+      to: kGuestId,
+      type: type,
+      content: content,
+      ts: DateTime.now().millisecondsSinceEpoch,
+    ));
+    _guestSave();
+    notifyListeners();
   }
 
   List<Msg> msgsOf(String conv) => history[conv] ?? const [];
@@ -743,10 +1017,15 @@ class AppState extends ChangeNotifier {
   void clearLocalHistory() {
     history.clear();
     unread.clear();
+    if (isGuest) _guestSave();
     notifyListeners();
   }
 
   Future<void> logout({bool clearSaved = true}) async {
+    if (isGuest) {
+      await exitGuest();
+      return;
+    }
     try {
       await _channel?.sink.close();
     } catch (_) {}

@@ -32,6 +32,7 @@ class _MomentsTabState extends State<MomentsTab> {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
+    final isGuest = s.isGuest;
     return RefreshIndicator(
       color: kAccent,
       backgroundColor: kSurface,
@@ -70,9 +71,13 @@ class _MomentsTabState extends State<MomentsTab> {
                                 fontWeight: FontWeight.w600)),
                         const SizedBox(height: 2),
                         Text(
-                            s.moments.isEmpty
-                                ? '留一句话或一张图，好友都能看见'
-                                : '你和好友们在黑暗里留下的痕迹',
+                            isGuest
+                                ? (s.moments.isEmpty
+                                    ? '留一句话或一张图，只保存在本机'
+                                    : '你在本机留下的痕迹')
+                                : (s.moments.isEmpty
+                                    ? '留一句话或一张图，好友都能看见'
+                                    : '你和好友们在黑暗里留下的痕迹'),
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(color: kTextSub, fontSize: 10)),
                       ],
